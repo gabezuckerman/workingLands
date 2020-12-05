@@ -16,6 +16,7 @@ all$acquisition_time <- ymd_hms(all$acquisition_time)
 #winter range is dec 1- march
 #summer range is july 1-sep 15
 
+
 #15 days in both winter and summer ranges
 
 getBursts <- function(id) {
@@ -27,54 +28,58 @@ getBursts <- function(id) {
     startYear <- year(min(ind$acquisition_time))
   }
   
-  #creating a table that matches time intervals of jan 1 - dec 31 to elk-years
   decStart <- ymd(paste0(startYear, "-12-1"))
+  
+  #creating a table that matches time intervals of dec 1, start - dec 31, start + 1 to elk-years
   numYears <- ceiling(as.numeric(difftime(date(max(ind$acquisition_time)), decStart, units = "weeks"))/52)
-  dates <- seq.Date(from = decStart, by = "1 year", length.out = numYears + 1)
   
-  intervals <- data.table(dates[1:numYears], lead(dates)[1:numYears]) %>% mutate(tInt = interval(V1, V2)) %>% select(tInt)
-  
-  ind$year <- map_dbl(ind$acquisition_time, ~which(.x %within% intervals$tInt)[1])
+  decStarts <- seq.Date(from = ymd(paste0(startYear, "-12-1")), by = "1 year", length.out = numYears + 1)
   
   
+  #decEnds
+  decEnds <- seq.Date(from = (decStart + years(1) + months(1) - days(1)), by = "1 year", length.out = numYears + 1)
   
-  #taking years (that start in december) that have more than 30 days of winter data
-  indSum <- ind %>% filter(month(acquisition_time) %in% c(12, 1, 2, 3)) %>% 
-    group_by(gps_sensors_animals_id,year) %>% 
-    summarise(winterDays = length(unique(date(acquisition_time))))
+  intervals <- interval(decStarts, decEnds)
   
-  #finding number of days in summer range per each elk-year
+  #bc some dates have multiple years, adding duplicate gps points for both years it has
   
-  julyStart <-  ymd(paste0(startYear, "-07-01"))
-  
-  numSummers <- ceiling(as.numeric(difftime(date(max(ind$acquisition_time)), julyStart, units = "weeks"))/52)
-  summerStarts <- seq.Date(from = julyStart, by = "1 year", length.out = numYears + 1)
-  
-  septemberEnds <- ymd(paste0(startYear, "-09-15"))
-  summerEnds <- seq.Date(from = septemberEnds, by = "1 year", length.out = numYears + 1)
-  
-  #creating table with all summers dates
-  summerIntervals <- data.table(summerStarts, summerEnds) %>%
-    mutate(tInt = interval(summerStarts, summerEnds)) %>% select(tInt)
-  
-  #adding a summer number to each point
-  ind$summer <- map_dbl(ind$acquisition_time, ~which(.x %within% summerIntervals$tInt)[1])
-  
-  
-  #finding number of days in each summer and merging it with winter days summary
-  indSum <- ind %>% group_by(gps_sensors_animals_id, year, summer) %>%
-    summarise(summerDays = length(unique(date(acquisition_time)))) %>% 
-    filter(!is.na(summer)) %>% merge(indSum)
-  
-  #finding years with at least 15 days in both winter and summer range
-  indSumComplete <- indSum %>% filter(summerDays >= 15, winterDays >= 15)
-  
-  #checking to see if there are multiple years
-  #and then returning only if the years are in order
-  if (nrow(indSumComplete) > 0) {
-    return(ind %>% filter(year %in% indSumComplete$year))
+  assignYear <- function(i) {
+    ind %>% filter(acquisition_time %within% intervals[i]) %>%
+      mutate(year = i, startDateYear = year(decStarts[i])) %>% return()
   }
+  
+  newInd <- map_dfr(1:length(intervals), assignYear)
+  
+  
+  #counting number of days in start winter and summer, year by year
+  #only returning if number of days in summer and winter is more than 15
+  check15days <- function(y) {
+    #getting data from elk year
+    yearData <- newInd %>% filter(year == y)
+    #finding dec start year
+    startDateYear <- unique(yearData$startDateYear)
+    
+    #finding winter and summer dates
+    winterInt <- interval(ymd(paste0(startDateYear, "-12-1")), 
+                          ymd(paste0(startDateYear + 1, "-3-31")))
+    summerInt <- interval(ymd(paste0(startDateYear + 1, "-7-1")), 
+                          ymd(paste0(startDateYear + 1, "-9-15")))
+    
+    #calculating number of days
+    winterDays <- yearData %>% filter(acquisition_time %within% winterInt) %>% 
+      distinct(as_date(acquisition_time)) %>% nrow()
+    
+    summerDays <- yearData %>% filter(acquisition_time %within% summerInt) %>% 
+      distinct(as_date(acquisition_time)) %>% nrow()
+    
+    if(winterDays >= 15 & summerDays >= 15) {
+      return(yearData)
+    }
+  }
+
+  map_dfr(1:length(intervals), check15days) %>% return()
 }
+
 
 
 
@@ -93,3 +98,6 @@ toc()
 stopCluster(cl)
 
 fwrite(bursts2, "burstsNC.csv")
+
+#1938 elk-years, 1269 elk
+bursts2 %>% distinct(gps_sensors_animals_id)

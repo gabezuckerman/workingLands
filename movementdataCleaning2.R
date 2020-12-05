@@ -15,8 +15,8 @@ setwd("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands")
 
 bursts <- fread("burstsNC.csv") %>%
   mutate(elkYear = paste0(gps_sensors_animals_id, "_", year),
-         acquisition_time = ymd_hms(acquisition_time)) %>% select(-summer) %>%
-  distinct(gps_sensors_animals_id, acquisition_time, .keep_all = T)
+         acquisition_time = ymd_hms(acquisition_time)) %>%
+  distinct(gps_sensors_animals_id, year, acquisition_time, .keep_all = T)
 
 
 herds <- unique(bursts$herd)
@@ -454,6 +454,54 @@ hist(bursts$elevation)
 
 fwrite(bursts, "burstsCleaned.csv")
 
-#1800 elk years, 1213 elk, 25 herds
+#removing bad ind
+bursts <- bursts %>% 
+  filter(elkYear %nin% c("189_2", "702_4", "674_2", "1522_3", "929_2", "58_2",
+                         "1169_1", "57_1", "28_1", "1168_1", "23_2"))
 
-sum <- bursts %>% group_by(herd) %>% summarise(elkYears = n_distinct(elkYear))
+
+
+#taking only the most recent year for each elk
+elkYearsToInclude <- bursts %>% distinct(gps_sensors_animals_id, elkYear) %>% 
+  arrange(desc(elkYear)) %>% 
+  distinct(gps_sensors_animals_id, .keep_all = T)
+
+#checking herd assignments
+subset <- bursts %>% filter(elkYear %in% elkYearsToInclude$elkYear)
+
+herds <- unique(subset$herd)
+
+plotHerd <- function(hNum) {
+  herdTable <- subset %>% filter(herd == herds[hNum])
+  paths <- herdTable %>% st_as_sf(coords = c("longitude", "latitude"), crs = 4326) %>% group_by(elkYear) %>%
+    summarise(do_union=FALSE) %>% st_cast("LINESTRING")
+  mapview(paths, zcol = "elkYear", color = sf.colors(nrow(paths), categorical = T),
+          alpha = .75, label = paths$elkYear, lwd = 1, legend = FALSE)
+}
+
+
+plotHerd(25)
+
+#look at afton herd
+indsToChange <- c("710_3", "1381_2", "866_2", "310_2", "1771_3", "1773_3", 
+                  "1776_2", "143_2", "145_2", "1311_2", "802_1", "801_2", 
+                  "755_2", "210_2", "424_1", "20_2")
+aftonIDs <- unique(filter(subset, herd == "Afton")$elkYear)
+
+indsToChange <- c(indsToChange, aftonIDs)
+
+subset <- subset %>% mutate(checkHerd = ifelse(elkYear %in% indsToChange,
+                                               TRUE, FALSE))
+
+fwrite(subset, "burstsCleanedSubset.csv")
+
+
+sum <- subset %>% filter(elkYear %in% elkYearsToInclude$elkYear) %>%
+  group_by(herd) %>% summarise(elkYears = n_distinct(elkYear))
+
+
+
+
+
+
+
