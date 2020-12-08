@@ -13,11 +13,12 @@ all$acquisition_time <- ymd_hms(all$acquisition_time)
 
 #bursting with elk years starting in december
 
-#winter range is dec 1- march
+#winter range 1 is dec 1- march
 #summer range is july 1-sep 15
+#winter range 2 is dec 1 - march
 
 
-#15 days in both winter and summer ranges
+#15 days in both winter ranges as well as summer ranges
 
 getBursts <- function(id) {
   ind <- all %>% filter(gps_sensors_animals_id == id)
@@ -33,55 +34,58 @@ getBursts <- function(id) {
   #creating a table that matches time intervals of dec 1, start - dec 31, start + 1 to elk-years
   numYears <- ceiling(as.numeric(difftime(date(max(ind$acquisition_time)), decStart, units = "weeks"))/52)
   
-  decStarts <- seq.Date(from = ymd(paste0(startYear, "-12-1")), by = "1 year", length.out = numYears + 1)
   
+  winterStarts <- seq.Date(from = decStart, by = "1 year", length.out = numYears + 1)
+  winterEnds <- seq.Date(from = ymd(paste0(startYear + 1, "-3-31")), by = "1 year", length.out = numYears + 1)
   
-  #decEnds
-  decEnds <- seq.Date(from = (decStart + years(1) + months(1) - days(1)), by = "1 year", length.out = numYears + 1)
+  # summerStarts <-  seq.Date(from = ymd(paste0(startYear + 1, "-7-1")), by = "1 year", length.out = numYears + 1)
+  # summerEnds <- seq.Date(from = ymd(paste0(startYear + 1, "-9-15")), by = "1 year", length.out = numYears + 1)
   
-  intervals <- interval(decStarts, decEnds)
-  
+
   #bc some dates have multiple years, adding duplicate gps points for both years it has
-  
   assignYear <- function(i) {
-    ind %>% filter(acquisition_time %within% intervals[i]) %>%
+    winterInt <- interval(winterStarts[i], winterEnds[i + 1])
+    ind %>% filter(acquisition_time %within% winterInt) %>%
       mutate(year = i, startDateYear = year(decStarts[i])) %>% return()
   }
   
-  newInd <- map_dfr(1:length(intervals), assignYear)
+  newInd <- map_dfr(1:numYears, assignYear)
   
-  
-  #counting number of days in start winter and summer, year by year
-  #only returning if number of days in summer and winter is more than 15
+  #counting number of days in winter 1, summer and winter 2
   check15days <- function(y) {
     #getting data from elk year
     yearData <- newInd %>% filter(year == y)
     #finding dec start year
     startDateYear <- unique(yearData$startDateYear)
     
-    #finding winter and summer dates
-    winterInt <- interval(ymd(paste0(startDateYear, "-12-1")), 
+    #finding winter 1 and 2 and summer dates
+    winterRange1 <- interval(ymd(paste0(startDateYear, "-12-1")), 
                           ymd(paste0(startDateYear + 1, "-3-31")))
-    summerInt <- interval(ymd(paste0(startDateYear + 1, "-7-1")), 
+    summerRange <- interval(ymd(paste0(startDateYear + 1, "-7-1")), 
                           ymd(paste0(startDateYear + 1, "-9-15")))
+    winterRange2 <- interval(ymd(paste0(startDateYear + 1, "-12-1")), 
+                           ymd(paste0(startDateYear + 2, "-3-31")))
     
     #calculating number of days
-    winterDays <- yearData %>% filter(acquisition_time %within% winterInt) %>% 
+    winter1days <- yearData %>% filter(acquisition_time %within% winterRange1) %>% 
       distinct(as_date(acquisition_time)) %>% nrow()
     
-    summerDays <- yearData %>% filter(acquisition_time %within% summerInt) %>% 
+    summerDays <- yearData %>% filter(acquisition_time %within% summerRange) %>% 
       distinct(as_date(acquisition_time)) %>% nrow()
     
-    if(winterDays >= 15 & summerDays >= 15) {
+    winter2days <- yearData %>% filter(acquisition_time %within% winterRange2) %>% 
+      distinct(as_date(acquisition_time)) %>% nrow()
+    
+    if(winter1days >= 15 & winter2days >= 15 & summerDays >= 15) {
       return(yearData)
     }
   }
 
-  map_dfr(1:length(intervals), check15days) %>% return()
+  map_dfr(1:numYears, check15days) %>% return()
 }
 
 
-
+getBursts(unique(all$gps_sensors_animals_id)[9])
 
 cl <- makeCluster(6)
 registerDoParallel(cl)
@@ -97,7 +101,7 @@ toc()
 
 stopCluster(cl)
 
-fwrite(bursts2, "burstsNC.csv")
+fwrite(bursts2, "burstsNCbothWinters.csv")
 
 #1938 elk-years, 1269 elk
 bursts2 %>% distinct(gps_sensors_animals_id)

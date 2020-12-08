@@ -4,37 +4,66 @@ library(data.table)
 library(lubridate)
 library(doParallel)
 library(tictoc)
+library(lubridate)
 
 setwd("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands")
 
-ldm <- fread("ldmGPS.csv")
-ldm$acquisition_time <- ymd_hms(ldm$acquisition_time)
+bursts <- fread("burstsCleanedSubsetLabeled.csv")
+bursts$acquisition_time <- ymd_hms(bursts$acquisition_time)
 
+ey <- unique(bursts$elkYear)[4]
 
 #for one ind at a time
+#nothing for residents, elevation for elevM, nsd for sdm, ldm
 getTiming <- function(ey) {
   
-  ind <- ldm %>% filter(elkYear == ey) %>% arrange(acquisition_time)
+  ind <- bursts %>% filter(elkYear == ey) %>% arrange(acquisition_time)
   
-  #converting to ltraj
+  strategy <- ind$strategy[1]
+  
+  if (strategy == "R"){
+    return(data.table(elkYear = ey, strategy, spStart = NA, spEnd = NA, faStart = NA, faEnd = NA))
+  }
+  
+  #converting to ltraj, with elevation
   track <- as.ltraj(xy = cbind(ind$longitude, ind$latitude), 
-                    date = ind$acquisition_time, id = ey) 
+                    date = ind$acquisition_time, id = ey, infolocs = data.frame(elev = ind$elevation)) 
   
+
   #finding best start date for model
   rlocs <- findrloc(track)
   
-  #fitting NSD
-  nsd <- mvmtClass(track, rloc = rlocs$rloc)
+  if(strategy == "ElevM") {
+    #fitting NSD for elevational migrants
+    nsd <- mvmtClass(track, fam = "elev")
+  } else {
+    #fitting NSD
+    nsd <- mvmtClass(track, rloc = rlocs$rloc)
+  }
+  
+  
 
-  plot(nsd)
+  #plot(nsd)
   
   #getting timing table
-  #if no mig model, then using mixed migrant timing
-  timeTable <- tryCatch({
-    mvmt2dt(nsd, mod = "migrant")
-  }, error = function(e){
-    mvmt2dt(nsd, mod = "mixmig")
-  })
+  #trying both migrant and mixmig
+  timeTable <- tryCatch({mvmt2dt(nsd)},
+                        error=function(cond) {
+                          NA
+                        })
+  
+  #and mixmig
+  if(is.na(timeTable) | is.null(timeTable[[1]])) {
+    timeTable <- tryCatch({mvmt2dt(nsd, mod = "mixmig")},
+                          error=function(cond) {
+                            NA
+                          })
+  }
+  
+  #if neither work, then returning empty timing
+  if(is.na(timeTable)) {
+    return(data.table(elkYear = ey, strategy, spStart = NA, spEnd = NA, faStart = NA, faEnd = NA))
+  }
   
   #extracting start and end dates
   spStart <- ldply(timeTable, data.frame)$date[1]
@@ -43,8 +72,9 @@ getTiming <- function(ey) {
   faEnd <- ldply(timeTable, data.frame)$date[4]
   
   #returning
-  return(data.table(elkYear = ey, spStart, spEnd, faStart, faEnd))
+  return(data.table(elkYear = ey, strategy, spStart, spEnd, faStart, faEnd))
 }
+
 
 ##parallelizing calculation
 cl <- makeCluster(6)
@@ -52,7 +82,7 @@ cl <- makeCluster(6)
 registerDoParallel(cl)
 
 tic()
-timing <- foreach(ey = unique(ldm$elkYear),
+timing <- foreach(ey = unique(bursts$elkYear),
                           .errorhandling = 'pass',
                           .packages = c('tidyverse', 'lubridate', 'plyr',
                                         'data.table', 'migrateR')) %dopar%
@@ -60,13 +90,10 @@ timing <- foreach(ey = unique(ldm$elkYear),
 toc()
 stopCluster(cl)
 
-timing2 <- rbindlist(timing, use.names = TRUE, fill = TRUE)
+timing2 <- bind_rows(timing)
 fwrite(timing2, "migTimingDraft.csv")
 
 
-
-
-#
 
 
         

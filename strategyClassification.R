@@ -10,8 +10,9 @@ library(Hmisc)
 
 setwd("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands")
 
-rangeDistances <- fread("rangeDistElevBBMM.csv") %>%
-  filter(elkYear %nin% c("702_4", "58_2", "23_1", "457_2", "883_2"))
+rangeDistances <- fread("rangeDistElevBBMM.csv") 
+# %>%
+#   filter(elkYear %nin% c("702_4", "58_2", "23_1", "457_2", "883_2"))
 
 
 
@@ -58,7 +59,21 @@ ggplotly(clusterPlot)
 
 table(rangeDistances$strategyDE)
 
-#346 LDM; 13 herds (out of 25)
+
+#adding strategy to gps data
+bursts <- fread("burstsCleanedSubset.csv")
+
+bursts <- bursts %>% merge(
+  rangeDistances %>% dplyr::select(elkYear, strategy = strategyDE)
+)
+
+fwrite(bursts, "burstsCleanedSubsetLabeled.csv")
+
+
+
+
+
+#215 LDM; 14 herds (out of 25)
 ldm <- rangeDistances %>% filter(strategyDE == "LDM")
 
 table(ldm$herd)
