@@ -46,7 +46,7 @@ getBursts <- function(id) {
   assignYear <- function(i) {
     winterInt <- interval(winterStarts[i], winterEnds[i + 1])
     ind %>% filter(acquisition_time %within% winterInt) %>%
-      mutate(year = i, startDateYear = year(decStarts[i])) %>% return()
+      mutate(year = i, startDateYear = year(winterStarts[i])) %>% return()
   }
   
   newInd <- map_dfr(1:numYears, assignYear)
@@ -85,7 +85,6 @@ getBursts <- function(id) {
 }
 
 
-getBursts(unique(all$gps_sensors_animals_id)[9])
 
 cl <- makeCluster(6)
 registerDoParallel(cl)
@@ -104,4 +103,4 @@ stopCluster(cl)
 fwrite(bursts2, "burstsNCbothWinters.csv")
 
 #1938 elk-years, 1269 elk
-bursts2 %>% distinct(gps_sensors_animals_id)
+bursts2 %>% distinct(gps_sensors_animals_id, year)

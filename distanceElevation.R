@@ -18,7 +18,7 @@ library(BBMM)
 setwd("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands/")
 
 #removing rows with missing values, switched gps_sensors_code and animals_code
-bursts <- fread("burstsCleanedSubset.csv")
+bursts <- fread("burstsCleanedSubsetBothWinters.csv")
 bursts$acquisition_time <- ymd_hms(bursts$acquisition_time)
 
 # #finding counties in which there is data
@@ -135,7 +135,7 @@ stopCluster(cl)
 
 rangeDistances2 <- rbindlist(rangeDistances)
 
-fwrite(rangeDistances2, "rangeDistElevBBMM.csv")
+fwrite(rangeDistances2, "rangeDistElevBothWintersBBMM.csv")
 
 
 

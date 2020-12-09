@@ -10,7 +10,7 @@ library(Hmisc)
 
 setwd("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands")
 
-rangeDistances <- fread("rangeDistElevBBMM.csv") 
+rangeDistances <- fread("rangeDistElevBothWintersBBMM.csv") 
 # %>%
 #   filter(elkYear %nin% c("702_4", "58_2", "23_1", "457_2", "883_2"))
 
@@ -61,13 +61,13 @@ table(rangeDistances$strategyDE)
 
 
 #adding strategy to gps data
-bursts <- fread("burstsCleanedSubset.csv")
+bursts <- fread("burstsCleanedSubsetBothWinters.csv")
 
 bursts <- bursts %>% merge(
   rangeDistances %>% dplyr::select(elkYear, strategy = strategyDE)
 )
 
-fwrite(bursts, "burstsCleanedSubsetLabeled.csv")
+fwrite(bursts, "burstsCleanedSubsetBothWintersLabeled.csv")
 
 
 

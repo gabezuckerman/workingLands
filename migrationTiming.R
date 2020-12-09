@@ -8,10 +8,9 @@ library(lubridate)
 
 setwd("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands")
 
-bursts <- fread("burstsCleanedSubsetLabeled.csv")
+bursts <- fread("burstsCleanedSubsetBothWintersLabeled.csv")
 bursts$acquisition_time <- ymd_hms(bursts$acquisition_time)
 
-ey <- unique(bursts$elkYear)[4]
 
 #for one ind at a time
 #nothing for residents, elevation for elevM, nsd for sdm, ldm

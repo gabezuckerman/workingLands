@@ -13,7 +13,7 @@ setwd("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands")
 #checking to see if there are any elk years with issues in the paths
 #removing issue elk-years
 
-bursts <- fread("burstsNC.csv") %>%
+bursts <- fread("burstsNCbothWinters.csv") %>%
   mutate(elkYear = paste0(gps_sensors_animals_id, "_", year),
          acquisition_time = ymd_hms(acquisition_time)) %>%
   distinct(gps_sensors_animals_id, year, acquisition_time, .keep_all = T)
@@ -457,7 +457,10 @@ fwrite(bursts, "burstsCleaned.csv")
 #removing bad ind
 bursts <- bursts %>% 
   filter(elkYear %nin% c("189_2", "702_4", "674_2", "1522_3", "929_2", "58_2",
-                         "1169_1", "57_1", "28_1", "1168_1", "23_2"))
+                         "1169_1", "57_1", "28_1", "1168_1", "23_2", "1407_2",
+                         "827_1", "834_1", "703_2", "1774_2", "896_2", "892_2",
+                         "507_1", "484_2", "907_2", "1733_1", "1746_1", "1745_1",
+                         "1134_1", "1140_1", "579_1", "254_1", "1179_1"))
 
 
 
@@ -493,10 +496,10 @@ indsToChange <- c(indsToChange, aftonIDs)
 subset <- subset %>% mutate(checkHerd = ifelse(elkYear %in% indsToChange,
                                                TRUE, FALSE))
 
-fwrite(subset, "burstsCleanedSubset.csv")
+fwrite(subset, "burstsCleanedSubsetBothWinters.csv")
 
 
-sum <- subset %>% filter(elkYear %in% elkYearsToInclude$elkYear) %>%
+sum <- subset %>%
   group_by(herd) %>% summarise(elkYears = n_distinct(elkYear))
 
 
