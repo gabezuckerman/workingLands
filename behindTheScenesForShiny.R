@@ -7,6 +7,9 @@ library(sf)
 bursts <- fread("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands/burstsCleanedSubsetBothWintersLabeled.csv")
 bursts$acquisition_time <- ymd_hms(bursts$acquisition_time)
 
+fwrite(bursts %>% distinct(elkYear), "order.csv")
+
+
 #converting all to utm so coords are in meters
 bursts <- bursts %>% st_as_sf(coords = c("longitude", "latitude"), crs = 4326) %>% st_transform(32612)
 coords <- st_coordinates(bursts)

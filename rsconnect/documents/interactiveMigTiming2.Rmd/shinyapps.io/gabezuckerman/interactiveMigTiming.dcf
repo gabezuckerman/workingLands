@@ -5,8 +5,8 @@ account: gabezuckerman
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 3430407
-bundleId: 4031309
+bundleId: 4031369
 url: https://gabezuckerman.shinyapps.io/interactiveMigTiming/
-when: 1609023775.10431
+when: 1609026060.50923
 asMultiple: FALSE
 asStatic: FALSE

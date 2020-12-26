@@ -24,6 +24,8 @@ library(sf)
 library(htmlwidgets)
 
 bursts <- fread("burstsForShiny.csv")
+order <- fread("order.csv")
+
 ```
 
 
@@ -31,11 +33,11 @@ Column {.sidebar}
 -----------------------------------------------------------------------
 
 ```{r processing}
-numericInput('ey', 'Elk year index', 1,
-              min = 1, max =  1000 )
+selectInput('ey', 'Elk year', order$elkYear)
+
 
 selectedData <- reactive({
-  ind <- bursts %>% filter(elkYear == unique(elkYear)[input$ey])
+  ind <- bursts %>% filter(elkYear == input$ey)
   
   first <- ind[1, 4:5]
   
@@ -51,10 +53,9 @@ selectedData <- reactive({
   
   })
 
-selectedInd <- reactive({unique(bursts$elkYear)[input$ey]})
 
 strategy <- reactive({
-  ind <- bursts %>% filter(elkYear == unique(elkYear)[input$ey])
+  ind <- bursts %>% filter(elkYear == input$ey)
   ind$strategy[1]
 })
 
@@ -73,7 +74,7 @@ Column {data-width=400}
 renderPlotly({
      plot_ly(selectedData(), x = ~date, y = ~distance) %>%
       add_markers() %>% highlight("plotly_hover", opacityDim = .1) %>%
-      layout(title=paste(selectedInd(), "classified as", strategy()))
+      layout(title=paste(input$ey, "classified as", strategy()))
 
 })
 
@@ -87,7 +88,7 @@ renderPlotly({
 renderPlotly({
      plot_ly(selectedData(), x = ~date, y = ~elevation) %>%
       add_markers() %>% highlight("plotly_hover", opacityDim = .1) %>%
-      layout(title=paste(selectedInd(), "classified as", strategy()))
+      layout(title=paste(input$ey, "classified as", strategy()))
 
 })
 ```
