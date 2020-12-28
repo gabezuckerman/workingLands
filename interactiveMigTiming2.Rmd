@@ -43,9 +43,9 @@ selectedData <- reactive({
   
   ind$distance <- map_dbl(1:nrow(ind), ~dist(rbind(first, ind[.x, 4:5])))
   
-  firstEl <- ind$elevation[6]
-  
-  ind$elevation <- map_dbl(1:nrow(ind), ~(ind$elevation[.x]-firstEl))
+  # firstEl <- ind$elevation[6]
+  # 
+  # ind$elevation <- map_dbl(1:nrow(ind), ~(ind$elevation[.x]-firstEl))
 
   ind %>% select(date, X, Y, strategy, distance, elevation) %>%
     st_as_sf(coords = c("X", "Y"), crs = 32612) %>% st_transform(4326) %>%
@@ -74,7 +74,8 @@ Column {data-width=400}
 renderPlotly({
      plot_ly(selectedData(), x = ~date, y = ~distance) %>%
       add_markers() %>% highlight("plotly_hover", opacityDim = .1) %>%
-      layout(title=paste(input$ey, "classified as", strategy()))
+      layout(title=paste(input$ey, "classified as", strategy())) %>%
+    toWebGL()
 
 })
 
@@ -88,7 +89,8 @@ renderPlotly({
 renderPlotly({
      plot_ly(selectedData(), x = ~date, y = ~elevation) %>%
       add_markers() %>% highlight("plotly_hover", opacityDim = .1) %>%
-      layout(title=paste(input$ey, "classified as", strategy()))
+      layout(title=paste(input$ey, "classified as", strategy()))%>%
+    toWebGL()
 
 })
 ```
