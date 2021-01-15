@@ -1,0 +1,174 @@
+---
+title: "Assisted Migration Timing"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    social: menu
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+# setwd("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands")
+
+
+library(flexdashboard)
+library(data.table)
+library(lubridate)
+library(plotly)
+library(leaflet)
+library(htmltools)
+library(crosstalk)
+library(tidyverse)
+library(sf)
+library(htmlwidgets)
+
+bursts <- fread("burstsForShiny.csv")
+order <- fread("order.csv")
+
+source("stdbscan.R")
+
+```
+
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+```{r processing}
+selectInput('ey', 'Elk year', order$elkYear)
+
+
+selectedData <- reactive({
+  ind <- bursts %>% filter(elkYear == input$ey)
+  
+  ind$date <- ymd(ind$date)
+  
+  first <- ind[1, 4:5]
+  
+  ind$distance <- map_dbl(1:nrow(ind), ~dist(rbind(first, ind[.x, 4:5])))
+  
+  res <- stdbscan(ind, x = ind$X, y = ind$Y, time = ind$date,
+                eps = max(ind$distance)/13, eps2 = 30, minpts = 7)
+
+  ind$cluster <- res$cluster
+  
+  summary <- ind %>% group_by(cluster) %>% 
+    summarise(numDays = n(), startDate = min(date), endDate = max(date)) %>%
+  arrange(desc(numDays))
+
+  ranges <- summary[1:3,] %>% arrange(startDate)
+  ranges$range <- c("Winter 1", "Summer", "Winter 2")
+  
+  rest <- summary %>% anti_join(ranges) %>% arrange(cluster)
+  
+  rest$range <- c("Migrating", rep("Stopover", (nrow(rest) - 1)))
+  
+  summary2 <- rbind(rest, ranges)
+  
+  ind <- ind %>% merge(summary2 %>% select(cluster, range))
+  
+  ind %>% select(date, X, Y, strategy, distance, elevation, range) %>%
+    st_as_sf(coords = c("X", "Y"), crs = 32612) %>% st_transform(4326) %>%
+    highlight_key()
+  
+  })
+
+
+selectedData2 <- reactive({
+  ind <- bursts %>% filter(elkYear == input$ey)
+  
+  ind$date <- ymd(ind$date)
+  
+  first <- ind[1, 4:5]
+  
+  ind$distance <- map_dbl(1:nrow(ind), ~dist(rbind(first, ind[.x, 4:5])))
+  
+  scaling <- unique(month(ind$date)) %>% length()
+
+  res <- stdbscan(ind, x = ind$X, y = ind$Y, time = ind$date,
+                eps = max(ind$distance)/scaling, eps2 = (scaling * 3), minpts = 7)
+
+  ind$cluster <- res$cluster
+  
+  summary <- ind %>% group_by(cluster) %>% 
+    summarise(numDays = n(), startDate = min(date), endDate = max(date)) %>%
+  arrange(desc(numDays))
+
+  ranges <- summary[1:3,] %>% arrange(startDate)
+  ranges$range <- c("Winter 1", "Summer", "Winter 2")
+  
+  rest <- summary %>% anti_join(ranges) %>% arrange(cluster)
+  
+  rest$range <- c("Migrating", rep("Stopover", (nrow(rest) - 1)))
+  
+  rbind(rest, ranges) %>% select(-cluster, -numDays) %>% 
+    filter(range != "Migrating") %>% arrange(startDate) %>%
+  select(range, everything()) %>% 
+    mutate(startDate = as.character(startDate), endDate = as.character(endDate))
+  
+  })
+
+
+renderTable(selectedData2())
+
+
+strategy <- reactive({
+  ind <- bursts %>% filter(elkYear == input$ey)
+  ind$strategy[1]
+})
+
+```
+
+
+Column {data-width=400}
+-----------------------------------------------------------------------
+
+### Distance Plot
+
+```{r distance}
+
+
+
+renderPlotly({
+     plot_ly(selectedData(), x = ~date, y = ~distance, color = ~range) %>%
+      add_markers() %>% highlight("plotly_hover", opacityDim = .1) %>%
+      layout(showlegend = FALSE, title=paste(input$ey, "classified as", strategy())) %>%
+    toWebGL()
+
+})
+
+
+ 
+```
+
+### Elevation Plot
+
+```{r elevation}
+renderPlotly({
+     plot_ly(selectedData(), x = ~date, y = ~elevation, color = ~range) %>%
+      add_markers() %>% highlight("plotly_hover", opacityDim = .1) %>%
+      layout(showlegend = FALSE, title=paste(input$ey, "classified as", strategy()))%>%
+    toWebGL()
+
+})
+```
+
+Column {data-width=400}
+-----------------------------------------------------------------------
+
+### Map
+
+```{r map}
+renderLeaflet({
+  pal <- colorFactor(
+  palette = 'Set2',
+  domain = selectedData()$range
+)
+  
+  leaflet(selectedData()) %>% addProviderTiles(providers$CartoDB.Positron) %>%
+    addCircles(label = ~htmlEscape(date), opacity = 1, color = ~pal(range)) %>%
+    addScaleBar()
+})
+
+```
+
