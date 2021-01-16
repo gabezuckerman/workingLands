@@ -5,6 +5,7 @@ library(BBMM)
 library(sf)
 library(doParallel)
 library(tictoc)
+library(raster)
 
 setwd("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands")
 
@@ -34,6 +35,9 @@ migTiming <- fread("migTiming - migTiming.csv", na.strings = c("NA", "")) %>%
 
 bursts$acquisition_time <- ymd_hms(bursts$acquisition_time)
 
+ey <- migTiming$elkYear[errored[19]]
+
+
 #start of code
 rangeCorridor <- function(ey) {
   ind <- bursts %>% filter(elkYear == ey)
@@ -54,14 +58,18 @@ rangeCorridor <- function(ey) {
     spEnd <- ymd(paste0(ind$startDateYear[1] +1, "-", indTiming$manualSpEnd))
     
     #need to account for fall migrations that start or end after december
+    #could be 
+    
     #start
-    if(substr(indTiming$manualFaStart, 1, 2) %in% c("1-", "2-", "3-")) {
+    if(substr(indTiming$manualFaStart, 1, 2) %in% 
+       c("1-", "2-", "3-", "01", "02", "03")) {
       faStart <- ymd(paste0(ind$startDateYear[1] +2, "-", indTiming$manualFaStart))
     } else {
       faStart <- ymd(paste0(ind$startDateYear[1] +1, "-", indTiming$manualFaStart))
     }
     #end
-    if(substr(indTiming$manualFaEnd, 1, 2) %in% c("1-", "2-", "3-")) {
+    if(substr(indTiming$manualFaEnd, 1, 2) %in% 
+       c("1-", "2-", "3-", "01", "02", "03")) {
       faEnd <- ymd(paste0(ind$startDateYear[1] +2, "-", indTiming$manualFaEnd))
     } else {
       faEnd <- ymd(paste0(ind$startDateYear[1] +1, "-", indTiming$manualFaEnd))
@@ -106,11 +114,13 @@ rangeCorridor <- function(ey) {
   
   
   
-  
   getBBMM <- function(p) {
+    
+    print(p)
     
     int <- filter(intTable, period == p)$interval
     
+    #for some reason data is empty
     data <- ind %>% filter(acquisition_time %within% int)
     
     timeLag <- as.numeric(difftime(data$acquisition_time, lag(data$acquisition_time), 
@@ -118,8 +128,10 @@ rangeCorridor <- function(ey) {
     
     #subset overall grid to make fitting quicker (with 25 km buffer for probabalistic fitting)
     #still has standard coords for merging inds from same herd
-    dataGrid <- grid %>% filter(X > (min(data$X)-25000), X < (max(data$X)+25000),
-                                Y > (min(data$Y)-25000), Y < (max(data$Y)+25000))
+    dataGrid <- grid %>% filter(X > (min(data$X, na.rm = T)-25000),
+                                X < (max(data$X, na.rm = T)+25000),
+                                Y > (min(data$Y, na.rm = T)-25000), 
+                                Y < (max(data$Y, na.rm = T)+25000))
     
     #running bbmm
     bb <- brownian.bridge(x = data$X, y = data$Y, time.lag = timeLag, 
@@ -153,7 +165,7 @@ cl <- makeCluster(6)
 registerDoParallel(cl)
 
 tic()
-rangeCorridorList <- foreach(ey = migTiming$elkYear[1:12],
+rangeCorridorList <- foreach(ey = migTiming$elkYear,
                           .errorhandling = 'pass',
                           .packages = c('tidyverse', 'lubridate', 'sf',
                                         'data.table', 'BBMM')) %dopar%
@@ -161,11 +173,171 @@ rangeCorridorList <- foreach(ey = migTiming$elkYear[1:12],
 toc()
 stopCluster(cl)
 
-all <- rbindlist(rangeCorridorList)
+#these are the ones that were successfull
+allGood <- rbindlist(Filter(is.data.frame, rangeCorridorList))
 
-save(all, file = "rangeCorridorProbs.RData")
+
+#the following errored bc I did not account for 01-18 as a fall mig start date
+errored <- c(38, 362, 367, 370,377, 384, 389, 408, 434, 441, 442, 455, 488, 
+497, 528, 534, 537, 609, 641, 704, 714, 742, 750, 752, 758, 760, 823, 
+849, 864, 866, 876, 888, 893, 894, 896, 897, 900, 901, 925, 926, 963, 966)
+
+
+
+#rerunning errored ones with new code
+cl <- makeCluster(6)
+
+registerDoParallel(cl)
+
+tic()
+rangeCorridorList2 <- foreach(ey = migTiming$elkYear[errored],
+                             .errorhandling = 'pass',
+                             .packages = c('tidyverse', 'lubridate', 'sf',
+                                           'data.table', 'BBMM')) %dopar%
+  rangeCorridor(ey)
+toc()
+stopCluster(cl)
+
+allFixed <- rbindlist(rangeCorridorList2)
+
+all <- rbind(allGood, allFixed)
+
+save(all, file = "rangeCorridorProbsFixed.RData")
 
 fwrite(all, "rangeCorridorProbs.csv")
 
 #after running for all inds, group by herd, x, y, period (combining both winters) and summarizing function of sum
 #then divide by total of herd, period to get herd level period distributions
+
+#joining both winters together
+all <- all %>% mutate(period = ifelse(period == "winter1" | period == "winter2",
+                               "winter", period))
+
+
+sumProb <- all %>% group_by(herd, X, Y, period) %>%
+  summarise(summedProb = sum(prob))
+
+#finding total prob for each herd-period
+totalHerdProb <- all %>% group_by(herd, period) %>%
+  summarize(totalProb = sum(prob), nInds = n_distinct(elkYear))
+
+
+probTable <- merge(sumProb, totalHerdProb) %>% mutate(
+  herdProp = summedProb/totalProb
+)
+
+
+fwrite(probTable, "herdCorridorRanges.csv")
+
+
+#converting to shapefile for each herd-period
+
+createContours <- function(i) {
+  hp <- probTable %>% filter(herd == totalHerdProb$herd[i],
+                             period == totalHerdProb$period[i]) %>%
+    mutate(percentile = ntile(herdProp, 100))
+  
+  
+  high <- rasterFromXYZ(hp %>% filter(percentile > 75) %>%
+                                  dplyr::select(X, Y, percentile)) %>%
+    rasterToPolygons(dissolve = T) %>% st_as_sf() %>%
+    st_set_crs(32612) %>% mutate(use = "high")
+  
+  mid <- rasterFromXYZ(hp %>% filter(percentile <= 75,
+                                             percentile > 25) %>%
+                                 dplyr::select(X, Y, percentile)) %>%
+    rasterToPolygons(dissolve = T) %>% st_as_sf() %>%
+    st_set_crs(32612) %>% mutate(use = "mid")
+  
+  low <- rasterFromXYZ(hp %>% filter(percentile <= 25) %>%
+                                 dplyr::select(X, Y, percentile)) %>%
+    rasterToPolygons(dissolve = T) %>% st_as_sf() %>%
+    st_set_crs(32612) %>% mutate(use = "low")
+  
+  contours <- do.call("rbind", list(low, mid, high))
+  
+  contours$period <- totalHerdProb$period[i]
+  contours$herd <- totalHerdProb$herd[i]
+  
+  return(contours)
+}
+
+
+##parallelizing contour generation
+
+cl <- makeCluster(6)
+
+registerDoParallel(cl)
+
+tic()
+allContours <- foreach(i = 1:nrow(totalHerdProb),
+                              .errorhandling = 'pass',
+                              .packages = c('tidyverse', 'lubridate', 'sf',
+                                            'data.table', 'raster')) %dopar%
+  createContours(i)
+toc()
+stopCluster(cl)
+
+allContours2 <- do.call("rbind", allContours)
+
+st_write(allContours2, "contours", "herdContours", driver = "ESRI Shapefile")
+
+#####converting to shapefile for each period
+#independent of herd
+sumProb <- all %>% group_by(X, Y, period) %>%
+  summarise(summedProb = sum(prob))
+
+#finding total prob for each herd-period
+gyeProb <- all %>% group_by(period) %>%
+  summarize(totalProb = sum(prob), nInds = n_distinct(elkYear))
+
+
+gyeProbTable <- merge(sumProb, gyeProb) %>% mutate(
+  prop = summedProb/totalProb)
+
+createGyeContours <- function(i) {
+  table <- gyeProbTable %>% filter(period == gyeProb$period[i]) %>%
+    mutate(percentile = ntile(prop, 100))
+  
+  
+  high <- rasterFromXYZ(table %>% filter(percentile > 75) %>%
+                          dplyr::select(X, Y, percentile)) %>%
+    rasterToPolygons(dissolve = T) %>% st_as_sf() %>%
+    st_set_crs(32612) %>% mutate(use = "high")
+  
+  mid <- rasterFromXYZ(table %>% filter(percentile <= 75,
+                                     percentile > 25) %>%
+                         dplyr::select(X, Y, percentile)) %>%
+    rasterToPolygons(dissolve = T) %>% st_as_sf() %>%
+    st_set_crs(32612) %>% mutate(use = "mid")
+  
+  low <- rasterFromXYZ(table %>% filter(percentile <= 25) %>%
+                         dplyr::select(X, Y, percentile)) %>%
+    rasterToPolygons(dissolve = T) %>% st_as_sf() %>%
+    st_set_crs(32612) %>% mutate(use = "low")
+  
+  contours <- do.call("rbind", list(low, mid, high))
+  
+  contours$period <- gyeProb$period[i]
+
+  return(contours)
+}
+
+##parallelizing contour generation
+
+cl <- makeCluster(4)
+
+registerDoParallel(cl)
+
+tic()
+allGyeContours <- foreach(i = 1:4,
+                       .errorhandling = 'pass',
+                       .packages = c('tidyverse', 'lubridate', 'sf',
+                                     'data.table', 'raster')) %dopar%
+  createGyeContours(i)
+toc()
+stopCluster(cl)
+
+allGyeContours2 <- do.call("rbind", allGyeContours)
+
+st_write(allGyeContours2, "contours", "gyeContours", driver = "ESRI Shapefile")
