@@ -36,6 +36,9 @@ migTiming <- fread("migTiming - migTiming.csv", na.strings = c("NA", "")) %>%
 
 bursts$acquisition_time <- ymd_hms(bursts$acquisition_time)
 
+#returns 1 point grid even though mig should span 10km
+ey <- "106_1"
+p <- "mig2"
 
 #returns all points within 99% isopleth for migrations and 50% isopleth for seasonal ranges
 getCorridor <- function(ey) {
@@ -140,7 +143,7 @@ getCorridor <- function(ey) {
                             location.error = 30, area.grid = dataGrid)
       
       #getting 99 contour for corridors
-      contours <- bbmm.contour(bb, levels=99, locations=data, plot = T)
+      contours <- bbmm.contour(bb, levels=99, locations=data, plot = F)
       bbDF <- data.table(X = bb[["x"]], Y = bb[["y"]], prob = bb[["probability"]]) 
       r <-  rasterFromXYZ(bbDF,crs=CRS("+proj=utm +zone=12 +datum=WGS84 +units=m +no_defs"),digits=2)
       raster.contour <- rasterToContour(r,levels=contours$Z) %>% st_as_sf() %>% st_cast("POLYGON")

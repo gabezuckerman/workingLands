@@ -8,6 +8,7 @@ library(sf)
 library(tripack)
 library(doParallel)
 library(tictoc)
+library(xtable)
 
 setwd("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands")
 
@@ -26,8 +27,14 @@ timing$resident <- rowSums(is.na(timing[,3:6]))==4
 
 #summary of strategies
 stratSum<- timing %>% group_by(herd) %>% dplyr::summarize(elk = n_distinct(elkYear),
-                                        residents = sum(as.numeric(resident)),
-                                        nonResidents = elk-residents)
+                                        residents = round(sum(as.numeric(resident)), 0),
+                                        nonResidents = round(elk-residents, 0)) %>%
+  mutate(resPercent = round(residents/elk, 2), nonResPercent = round(nonResidents/elk, 2))
+
+
+print(xtable(stratSum), type = "latex")
+
+
 #summary of distribution of seasons
 seasonalCounts <- fread("seasonalCounts.csv")
 
@@ -35,6 +42,8 @@ seasonalCounts <- fread("seasonalCounts.csv")
 
 getExactTiming <- function(ey) {
   indTiming <- timing %>% filter(elkYear == ey)
+  
+  ind <- bursts %>% filter(elkYear == ey)
   
   
   if(sum(is.na(indTiming)) == 0) {
@@ -102,6 +111,8 @@ dates$date <- map_chr(dates$date, ~substring(ymd("2001-1-1") + days(.x), 6))
 dates <- dates %>% pivot_wider(names_from = period, values_from = date) %>%
   dplyr::select(herd, spStart, spEnd, faStart, faEnd)
 
+
+
 #spring and fall migration corridor lengths
 #determining by 2*radius of the smallest drawn around circle around the 99% isopleth of each mig
 
@@ -149,7 +160,10 @@ corridorLength <- rbindlist(Filter(is.data.frame, corridorLengthList))
 corridorSum <- corridorLength %>% group_by(herd) %>% dplyr::summarise(min = min(len),
                                                        mean = mean(len),
                                                        max = max(len))
-
+#merge with dates
+forPres <- dates %>% merge(corridorSum) %>% dplyr::select(-min) %>% 
+  mutate(mean = as.character(round(mean/1000, 1)), max = as.character(round(max/1000, 1)))
+print(xtable(forPres), type = "latex")
 
 
 #are stopovers contained within high use corridors? not really
@@ -219,6 +233,7 @@ getCorridorIntersection <- function(h){
 }
 
 springFallIntersection <- map_dfr(herds, getCorridorIntersection)
+springFallIntersection[is.na(springFallIntersection)] <- 0
 
 
 #how much do winter1 and winter2 ranges overlap? not much
@@ -227,7 +242,7 @@ winterShape <- st_read("corridorRanges/rangeStopovers", "all") %>%
 st_crs(winterShape) <- 32612
 
 
-#note winter1 includes residents
+#note winter1 includes residents, NEED to remove
 getWinterIntersection <- function(h){
   
   winter1 <- winterShape %>% filter(herd == h, period == "winter1")
@@ -241,8 +256,9 @@ getWinterIntersection <- function(h){
 }
 
 winterIntersection <- map_dfr(herds, getWinterIntersection)
+winterIntersection[is.na(winterIntersection)] <- 0
 
-
+mean(winterIntersection$intWinter)
 #area of medium and high use
 midHighArea <- corridorShapes %>% mutate(area = as.numeric(st_area(.))) %>% st_drop_geometry()
 
