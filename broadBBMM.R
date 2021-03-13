@@ -104,14 +104,20 @@ getSeasonalRanges <- function(ey) {
     timeLag <- as.numeric(difftime(data$acquisition_time, lag(data$acquisition_time), 
                                    units = "mins"))[2:nrow(data)]
     
-    #removing the top 1% of timeLag datapoints
-    data <- data[-which(ntile(timeLag, 100) == 100), ]
-    
-    
-    #running bbmm
-    bb <- brownian.bridge(x = data$X, y = data$Y, 
-                          time.lag = timeLag[-which(ntile(timeLag, 100) == 100)], 
-                          location.error = 30, cell.size = 250)
+    #checking to see if any timestamps are in top 1%, and removing those
+    if(length(which(ntile(timeLag, 1000) > 990)) == 0){
+      #running bbmm
+      bb <- brownian.bridge(x = data$X, y = data$Y, time.lag = timeLag, 
+                            location.error = 30, cell.size = 250)
+    } else {
+      #removing the top 1% of timeLag datapoints
+      data <- data[-which(ntile(timeLag, 1000) > 990), ]
+      
+      #running bbmm
+      bb <- brownian.bridge(x = data$X, y = data$Y, 
+                            time.lag = timeLag[-which(ntile(timeLag, 1000) > 990)], 
+                            location.error = 30, cell.size = 250)
+    }
     
     #getting 99 contour for corridors
     contours <- bbmm.contour(bb, levels=99, locations=data, plot = F)
@@ -171,8 +177,6 @@ combineToSeasons <- function(h) {
 #deer creek, greycliff only has winter, meaning only residents
 all <- map(unique(seasonalRanges$herd), combineToSeasons) %>% mapedit:::combine_list_of_sf()
 
-st_write(all, "broad99BBMM", "all", driver = "ESRI Shapefile")
-
-allCheck <- st_read("broad99BBM", "all")
+st_write(all, "broad99BBMM", "all", driver = "ESRI Shapefile", append = F)
 
 
