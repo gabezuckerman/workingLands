@@ -4,10 +4,8 @@ library(tidyverse)
 library(sf)
 
 #reading in all bursts
-bursts <- fread("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands/burstsCleanedSubsetBothWintersLabeled.csv")
+bursts <- fread("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands/newNorthernWRIRburstsCleanedSubset.csv")
 bursts$acquisition_time <- ymd_hms(bursts$acquisition_time)
-
-#fwrite(bursts %>% distinct(elkYear), "order.csv")
 
 
 #converting all to utm so coords are in meters
@@ -23,37 +21,6 @@ bursts <- bursts %>%
   arrange(acquisition_time) 
 
 #selecting only the relevant columns to make loading easier
-bursts <- bursts %>% dplyr::select(elkYear, date, strategy, X, Y, elevation)
+bursts <- bursts %>% dplyr::select(elkYear, date, X, Y, elevation)
 
-fwrite(bursts, "burstsForShiny.csv")
-
-
-
-ind <- bursts %>% filter(elkYear == "10_1")
-ind %>% mutate(distance = dist())
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+fwrite(bursts, "burstsForShiny2.csv")

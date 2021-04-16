@@ -1,0 +1,103 @@
+---
+title: "Migration Timing, Round 2!"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    social: menu
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+
+library(flexdashboard)
+library(data.table)
+library(lubridate)
+library(plotly)
+library(leaflet)
+library(htmltools)
+library(crosstalk)
+library(tidyverse)
+library(sf)
+library(htmlwidgets)
+
+bursts <- fread("burstsForShiny2.csv")
+
+```
+
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+```{r processing}
+selectInput('ey', 'Elk year', unique(bursts$elkYear))
+
+
+selectedData <- reactive({
+  ind <- bursts %>% filter(elkYear == input$ey)
+  
+  first <- ind[1, 4:5]
+  
+  ind$distance <- map_dbl(1:nrow(ind), ~dist(rbind(first, ind[.x, 4:5])))
+  
+  # firstEl <- ind$elevation[6]
+  # 
+  # ind$elevation <- map_dbl(1:nrow(ind), ~(ind$elevation[.x]-firstEl))
+
+  ind %>% select(date, X, Y, distance, elevation) %>%
+    st_as_sf(coords = c("X", "Y"), crs = 32612) %>% st_transform(4326) %>%
+    highlight_key()
+  
+  })
+
+
+```
+
+
+Column {data-width=400}
+-----------------------------------------------------------------------
+
+### Distance Plot
+
+```{r distance}
+
+
+
+renderPlotly({
+     plot_ly(selectedData(), x = ~date, y = ~distance) %>%
+      add_markers() %>% highlight("plotly_hover", opacityDim = .1) %>%
+      layout(input$ey) %>%
+    toWebGL()
+
+})
+
+
+ 
+```
+
+### Elevation Plot
+
+```{r elevation}
+renderPlotly({
+     plot_ly(selectedData(), x = ~date, y = ~elevation) %>%
+      add_markers() %>% highlight("plotly_hover", opacityDim = .1) %>%
+      layout(input$ey) %>%
+    toWebGL()
+
+})
+```
+
+Column {data-width=400}
+-----------------------------------------------------------------------
+
+### Map
+
+```{r map}
+renderLeaflet({
+  leaflet(selectedData()) %>% addProviderTiles(providers$Esri.WorldTopoMap) %>%
+    addCircles(label = ~htmlEscape(date), opacity = 1) %>%
+    addScaleBar()
+})
+
+```
+
