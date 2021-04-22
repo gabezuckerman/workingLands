@@ -6,47 +6,27 @@ library(sf)
 library(mapview)
 library(raster)
 library(velox)
+library(doParallel)
+library(tictoc)
 
 
 setwd("C:/Users/MiddletonLab/Desktop/Gabe/Box Sync/Elk/Working Lands")
 
-#start ids in 2000s
+wrirSensAni <- fread("../movementData/WRIR/updatedForDB/sensorsAnimals.csv")
+wrirGPS <- fread("../movementData/WRIR/updatedForDB/gps.csv")
 
-northernSensAni <- fread("../movementData/newNorthern/gpsSensorsAnimals.csv")
-northernGPS <- fread("../movementData/newNorthern/gps.csv")
 
-northern <- northernSensAni %>% dplyr::select(animals_code, gps_sensors_code) %>%
-  mutate(gps_sensors_animals_id = 2000 + animals_code) %>%  merge(
-  northernGPS %>% dplyr::select(gps_sensors_code, acquisition_time, longitude, latitude, dop)
-) %>% mutate(herd = "Northern") %>% dplyr::select(gps_sensors_animals_id, everything())
-
-#fwrite(northern, "../movementData/newNorthern/cleanedNewNorthernForLaura.csv")
-
-wrirSensAni <- fread("../movementData/WRIR/sensorsAnimals.csv")
-wrirGPS <- fread("../movementData/WRIR/gps.csv")
-
-wrir <- wrirSensAni %>% dplyr::select(animals_code, gps_sensors_code) %>%
-  mutate(row = seq(1, nrow(.)), gps_sensors_animals_id = 3000 + row) %>%
+#other gps_sensors_animals_id starts at 3032
+wrirLive <- wrirSensAni %>% filter(status == "active") %>% dplyr::select(animals_code, gps_sensors_code) %>%
+  mutate(row = seq(1, nrow(.)), gps_sensors_animals_id = 3032 + row) %>%
   dplyr::select(-row) %>% merge(
     wrirGPS %>% dplyr::select(gps_sensors_code, acquisition_time, longitude, latitude, dop)
   ) %>% mutate(herd = "WRIR") %>% dplyr::select(gps_sensors_animals_id, everything())
 
-
-all <- rbind(northern, wrir)
-
-
-
-#bursting with elk years starting in december
-
-#winter range 1 is dec 1- march
-#summer range is july 1-sep 15
-#winter range 2 is dec 1 - march
-
-
 #15 days in both winter ranges as well as summer ranges
 
 getBursts <- function(id) {
-  ind <- all %>% filter(gps_sensors_animals_id == id)
+  ind <- wrirLive %>% filter(gps_sensors_animals_id == id)
   startMonth <- month(min(ind$acquisition_time))
   if(startMonth < 12) {
     startYear <- year(min(ind$acquisition_time)) - 1
@@ -110,11 +90,11 @@ getBursts <- function(id) {
 }
 
 
-cl <- makeCluster(12)
+cl <- makeCluster(11)
 registerDoParallel(cl)
 
 tic()
-bursts <- foreach(id = unique(all$gps_sensors_animals_id),
+bursts <- foreach(id = unique(wrirLive$gps_sensors_animals_id),
                   .errorhandling = 'pass',
                   .packages = c('tidyverse', 'lubridate',
                                 'data.table', 'Hmisc')) %dopar%
@@ -124,9 +104,12 @@ toc()
 
 stopCluster(cl)
 
-
 bursts2 <- bursts2 %>% mutate(elkYear = paste(gps_sensors_animals_id, year, sep = "_")) %>%
-  dplyr::select(elkYear, everything(), -year) %>% filter(dop < 7)
+  dplyr::select(elkYear, everything(), -year)
+
+# bursts2 %>% st_as_sf(coords = c("longitude", "latitude"), crs = 4326) %>%
+#   group_by(elkYear) %>% summarise(do_union=FALSE) %>%
+#   st_cast("LINESTRING") %>% mapview()
 
 #adding elevation to all points
 dem <- raster("../Switching2/covariateData/SnowData/DEM/gyaDEM.tif")
@@ -139,8 +122,8 @@ elevation <- vDEM$extract_points(burstSF)
 
 bursts2$elevation <- elevation
 
-fwrite(bursts2, "newNorthernWRIRburstsCleaned.csv")
-         
+fwrite(bursts2, "liveWRIRburstsCleaned.csv")
+
 #taking only the most recent year for each elk
 elkYearsToInclude <- bursts2 %>% distinct(gps_sensors_animals_id, elkYear) %>% 
   arrange(desc(elkYear)) %>% 
@@ -148,6 +131,9 @@ elkYearsToInclude <- bursts2 %>% distinct(gps_sensors_animals_id, elkYear) %>%
 
 subset <- bursts2 %>% filter(elkYear %in% elkYearsToInclude$elkYear)
 
+# subset  %>% st_as_sf(coords = c("longitude", "latitude"), crs = 4326) %>%
+#   group_by(elkYear) %>% summarise(do_union=FALSE) %>%
+#   st_cast("LINESTRING") %>% mapview()
 
-fwrite(subset, "newNorthernWRIRburstsCleanedSubset.csv")
+fwrite(subset, "liveWRIRburstsCleanedSubset.csv")
 
