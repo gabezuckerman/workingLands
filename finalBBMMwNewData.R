@@ -217,7 +217,7 @@ getBBMM99isopleth <- function(row){
   #subsetting to period
   data <- allGPSlabeled %>% filter(elkYear == allPeriods$elkYear[row],
                                    period == allPeriods$period[row]) %>%
-    dplyr::select(elkYear, startDateYear, acquisition_time, X, Y) %>% arrange(acquisition_time)
+    dplyr::select(elkYear, startDateYear, herd, acquisition_time, X, Y) %>% arrange(acquisition_time)
   
   #fitting bbmm
   timeLag <- as.numeric(difftime(data$acquisition_time, lag(data$acquisition_time), 
@@ -254,7 +254,7 @@ getBBMM99isopleth <- function(row){
   out <- tryCatch(
     {
       rasterToContour(r,levels=contours$Z) %>% st_as_sf() %>% st_cast("POLYGON") %>%
-        mutate(elkYear = allPeriods$elkYear[row], period = allPeriods$period[row], herd = ind$herd[1]) %>%
+        mutate(elkYear = allPeriods$elkYear[row], period = allPeriods$period[row], herd = data$herd[1]) %>%
         dplyr::select(-level)
     },
     error = function(cond){
@@ -263,16 +263,16 @@ getBBMM99isopleth <- function(row){
   out
 }
 
-
+library(doSNOW)
 cl <- makeCluster(11)
 registerDoSNOW(cl)
 
-pb <- txtProgressBar(max = 11, style = 3)
+pb <- txtProgressBar(max = nrow(allPeriods), style = 3)
 progress <- function(n) setTxtProgressBar(pb, n)
 opts <- list(progress = progress)
 
 
-rangesList <- foreach(i = 1:11,
+rangesList <- foreach(i = 1:nrow(allPeriods),
                          .errorhandling = 'pass',
                          .options.snow = opts,
                          .packages = c('tidyverse', 'lubridate','data.table',
